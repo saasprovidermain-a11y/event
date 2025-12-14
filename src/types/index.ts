@@ -1,3 +1,4 @@
+
 export type UserRole = 'admin' | 'organizer';
 
 export interface User {
@@ -11,13 +12,24 @@ export interface User {
 
 export interface EventCategory {
   id: string;
-  name: string;
+  name:string;
   color: string;
+}
+
+export interface CheckInCategory {
+  id: string;
+  name: string;
+  eventId: string;
+  organizerId: string;
+  icon?: string; // Optional: for future use e.g., 'Coffee', 'Box'
 }
 
 export interface CheckInTypeDefinition {
   id: string;
   name: string;
+  eventId: string;
+  organizerId: string;
+  categoryId: string;
 }
 
 export interface Event {
@@ -26,7 +38,6 @@ export interface Event {
   name: string;
   description?: string;
   categories: EventCategory[];
-  checkInTypes: CheckInTypeDefinition[];
   registrationLink: string;
   createdAt: any; // Allow any for Firestore Timestamp flexibility
   isActive: boolean;
@@ -44,7 +55,7 @@ export interface Participant {
   registeredAt: any; // Allow any for Firestore Timestamp flexibility
   qrCode: string;
   checkIns: CheckIn[];
-  registrationNumber: number;
+  registrationNumber: string;
 }
 
 export interface CheckIn {

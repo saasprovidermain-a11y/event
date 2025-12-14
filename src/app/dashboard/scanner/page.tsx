@@ -1,12 +1,19 @@
+
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, getDocs, query, where, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Participant, Event, CheckInTypeDefinition } from '@/types';
+import { Participant, Event, CheckInTypeDefinition, CheckInCategory } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
   QrCode,
   AlertTriangle,
@@ -19,17 +26,31 @@ import {
   XCircle,
   Loader2,
   Ticket,
-  Maximize,
-  Minimize,
+  Coffee,
+  Box,
+  LogIn,
+  ArrowLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { cn } from '@/lib/utils';
+
+// Helper to map category names to icons
+const getCategoryIcon = (categoryName: string) => {
+  const name = categoryName.toLowerCase();
+  if (name.includes('food')) return Coffee;
+  if (name.includes('kit')) return Box;
+  if (name.includes('check')) return LogIn;
+  return Ticket;
+};
+
 
 const QRScannerPage = () => {
   const { currentUser } = useAuth();
   const [event, setEvent] = useState<Event | null>(null);
-  const [loadingEvent, setLoadingEvent] = useState(true);
+  const [checkInTypes, setCheckInTypes] = useState<CheckInTypeDefinition[]>([]);
+  const [checkInCategories, setCheckInCategories] = useState<CheckInCategory[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
   const [scanning, setScanning] = useState(false);
   const [lastScanned, setLastScanned] = useState<Participant | null>(null);
@@ -40,25 +61,34 @@ const QRScannerPage = () => {
   const [focusMode, setFocusMode] = useState(false);
 
   useEffect(() => {
-    const fetchEvent = async () => {
+    const fetchData = async () => {
       if (!currentUser) return;
       try {
+        setLoadingData(true);
         const eventQuery = query(collection(db, 'events'), where('organizerId', '==', currentUser.uid));
-        const snapshot = await getDocs(eventQuery);
-        if (!snapshot.empty) {
-          const eventData = snapshot.docs[0].data() as Event;
+        const eventSnapshot = await getDocs(eventQuery);
+        
+        if (!eventSnapshot.empty) {
+          const eventData = { ...eventSnapshot.docs[0].data(), id: eventSnapshot.docs[0].id } as Event;
           setEvent(eventData);
-          if (eventData.checkInTypes?.length > 0) {
-            setSelectedTypeId(eventData.checkInTypes[0].id);
-          }
+
+          const categoryQuery = query(collection(db, 'checkInCategories'), where('eventId', '==', eventData.id));
+          const categorySnapshot = await getDocs(categoryQuery);
+          const categoryData = categorySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as CheckInCategory[];
+          setCheckInCategories(categoryData);
+
+          const checkInTypeQuery = query(collection(db, 'checkInTypes'), where('eventId', '==', eventData.id));
+          const checkInTypeSnapshot = await getDocs(checkInTypeQuery);
+          const checkInData = checkInTypeSnapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id })) as CheckInTypeDefinition[];
+          setCheckInTypes(checkInData);
         }
       } catch (error) {
         toast.error('Failed to load event information.');
       } finally {
-        setLoadingEvent(false);
+        setLoadingData(false);
       }
     };
-    fetchEvent();
+    fetchData();
   }, [currentUser]);
 
   useEffect(() => {
@@ -81,23 +111,15 @@ const QRScannerPage = () => {
       }
 
       setScanning(true);
-      setFocusMode(true); // One-click focus mode
+      setFocusMode(true);
       setScanResult(null);
       setLastScanned(null);
       
-      const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-      };
-
       await scannerRef.current?.start(
         { facingMode: 'environment' },
-        { ...config, 
-          videoConstraints: { 
-            facingMode: 'environment',
-            advanced: [{ focusMode: 'continuous' }] 
-          } 
+        { 
+          fps: 10,
+          // No qrbox property means full screen scanning
         },
         handleScan,
         () => {}
@@ -105,30 +127,37 @@ const QRScannerPage = () => {
     } catch (err) {
       setScanning(false);
       setFocusMode(false);
-      toast.error('Failed to access camera. Please allow camera permissions in your browser settings.');
+      toast.error('Failed to access camera. Please allow camera permissions.');
     }
   };
 
   const stopScanner = async () => {
     try {
-      if (scannerRef.current?.isScanning) {
+      if (scannerRef.current?.getState() === Html5QrcodeScannerState.SCANNING) {
         await scannerRef.current?.stop();
       }
-      setScanning(false);
     } catch (err) {
-      // Ignore errors when stopping
+      // Ignore errors when stopping, as it can throw if already stopped.
+    } finally {
+      setScanning(false);
+      setFocusMode(false);
     }
   };
 
   const handleScan = async (qrCode: string) => {
-    await stopScanner();
-    setFocusMode(false); // Exit focus mode on scan
-    if (!event) return;
-
+    await stopScanner(); // Stop scanning immediately after a detection
+    if (!event || !currentUser) return;
+  
+    setFocusMode(false); // Exit focus mode to show results
+  
     try {
-      const participantQuery = query(collection(db, 'participants'), where('organizerId', '==', currentUser?.uid), where('qrCode', '==', qrCode));
+      const participantQuery = query(
+        collection(db, 'participants'),
+        where('organizerId', '==', currentUser.uid),
+        where('qrCode', '==', qrCode)
+      );
       const snapshot = await getDocs(participantQuery);
-
+  
       if (snapshot.empty) {
         setScanResult('not-found');
         setScanMessage('This QR code is not valid for your event.');
@@ -136,46 +165,70 @@ const QRScannerPage = () => {
         toast.error('Invalid QR Code.');
         return;
       }
-
+  
       const participantDoc = snapshot.docs[0];
-      const participant = {
-        ...participantDoc.data(),
-        id: participantDoc.id,
-      } as Participant;
-
+      const participant = { ...participantDoc.data(), id: participantDoc.id } as Participant;
       const checkIns = participant.checkIns || [];
+      const selectedType = checkInTypes.find(t => t.id === selectedTypeId);
+      
+      if (!selectedType) {
+        throw new Error("Selected check-in type not found");
+      }
+  
       const alreadyScanned = checkIns.some((checkIn) => checkIn.typeId === selectedTypeId);
-      const selectedType = event.checkInTypes.find(t => t.id === selectedTypeId);
-
+  
       if (alreadyScanned) {
         setScanResult('duplicate');
-        setScanMessage(`This participant has already been scanned for ${selectedType?.name}.`);
+        setScanMessage(`This participant has already been scanned for ${selectedType.name}.`);
         setLastScanned(participant);
-        toast.warning('Duplicate Scan Detected.');
+        toast.warning(`Already scanned for ${selectedType.name}.`);
         return;
       }
-
+  
       await updateDoc(doc(db, 'participants', participantDoc.id), {
         checkIns: arrayUnion({
           typeId: selectedTypeId,
-          typeName: selectedType?.name,
+          typeName: selectedType.name,
           timestamp: new Date().toISOString(),
-          scannedBy: currentUser?.uid,
+          scannedBy: currentUser.uid,
         }),
       });
-
+  
       setScanResult('success');
-      setScanMessage(`${selectedType?.name} recorded successfully!`);
-      setLastScanned(participant);
-      toast.success(`${participant.fullName} checked in for ${selectedType?.name}`);
+      setScanMessage(`${selectedType.name} recorded successfully!`);
+      // Update participant object locally to reflect new check-in for the UI
+      const updatedParticipant = {
+        ...participant,
+        checkIns: [
+          ...checkIns,
+          {
+            typeId: selectedTypeId,
+            typeName: selectedType.name,
+            timestamp: new Date().toISOString(),
+            scannedBy: currentUser.uid,
+          },
+        ],
+      };
+      setLastScanned(updatedParticipant);
+      toast.success(`${participant.fullName} checked in for ${selectedType.name}`);
+  
     } catch (err) {
+      console.error(err);
       setScanResult('not-found');
       setScanMessage('An error occurred while processing the scan. Please try again.');
       toast.error('Failed to process scan.');
     }
   };
   
-  if (loadingEvent) {
+  const groupedCheckInTypes = useMemo(() => {
+    return checkInCategories.map(category => ({
+      ...category,
+      types: checkInTypes.filter(type => type.categoryId === category.id)
+    })).filter(category => category.types.length > 0); // Only show categories with types
+  }, [checkInCategories, checkInTypes]);
+
+
+  if (loadingData) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -196,9 +249,20 @@ const QRScannerPage = () => {
     <div
       className={cn(
         'max-w-2xl mx-auto space-y-6 transition-all duration-300',
-        focusMode && 'fixed inset-0 z-[100] bg-background max-w-full w-full h-full p-4 overflow-auto'
+        focusMode && 'fixed inset-0 z-[100] bg-background max-w-full w-full h-full p-4 overflow-auto flex flex-col'
       )}
     >
+       {focusMode && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={stopScanner}
+          className="absolute top-4 left-4 z-10 bg-background/50 hover:bg-background/80"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+      )}
+
       <div className={cn('text-center', focusMode && 'hidden')}>
         <h1 className="text-3xl font-sans font-bold text-foreground">QR Scanner</h1>
         <p className="text-muted-foreground mt-1">Scan participant QR codes for check-ins</p>
@@ -210,30 +274,51 @@ const QRScannerPage = () => {
           <CardDescription>Choose what you are scanning for.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {event.checkInTypes.map((type) => (
-              <Button
-                key={type.id}
-                variant={selectedTypeId === type.id ? 'default' : 'outline'}
-                className="flex flex-col h-auto py-3 gap-1.5"
-                onClick={() => setSelectedTypeId(type.id)}
-              >
-                <Ticket className="w-5 h-5" />
-                <span className="text-xs sm:text-sm">{type.name}</span>
-              </Button>
-            ))}
-          </div>
+            {groupedCheckInTypes.length > 0 ? (
+                <Accordion type="multiple" className="w-full" defaultValue={groupedCheckInTypes.map(c => c.id)}>
+                  {groupedCheckInTypes.map(category => {
+                    const Icon = getCategoryIcon(category.name);
+                    return (
+                      <AccordionItem value={category.id} key={category.id}>
+                        <AccordionTrigger className="text-base">
+                          <div className="flex items-center gap-3">
+                            <Icon className="w-5 h-5 text-primary" />
+                            {category.name}
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                            {category.types.map((type) => (
+                              <Button
+                                  key={type.id}
+                                  variant={selectedTypeId === type.id ? 'default' : 'outline'}
+                                  className="flex flex-col h-auto py-3 gap-1.5"
+                                  onClick={() => setSelectedTypeId(type.id)}
+                              >
+                                  <Ticket className="w-5 h-5" />
+                                  <span className="text-xs sm:text-sm text-center">{type.name}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    )
+                  })}
+                </Accordion>
+            ) : (
+                <p className="text-muted-foreground text-sm">No check-in types have been set up for this event yet.</p>
+            )}
         </CardContent>
       </Card>
 
       <Card className={cn('border-0 shadow-md overflow-hidden', focusMode && 'h-full flex flex-col')}>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className={cn("flex flex-row items-center justify-between", focusMode && 'hidden')}>
           <CardTitle className="text-lg">2. Scan QR Code</CardTitle>
         </CardHeader>
-        <CardContent className="p-0 flex-1 flex flex-col">
-          <div id="qr-reader" className="w-full bg-secondary/5 flex-1" />
+        <CardContent className={cn("p-0 flex flex-col justify-center items-center", focusMode && 'h-full flex-1')}>
+          <div id="qr-reader" className="w-full bg-secondary/5" />
           
-          {!scanning && (
+          {!scanning && !focusMode && (
             <div className="p-8 text-center">
               <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Camera className="w-12 h-12 text-primary" />
@@ -242,20 +327,9 @@ const QRScannerPage = () => {
               <p className="text-muted-foreground text-sm mb-6">
                 Click the button below to activate the camera and start scanning.
               </p>
-              <Button variant="gradient" size="lg" onClick={startScanner}>
+              <Button variant="gradient" size="lg" onClick={startScanner} disabled={!selectedTypeId || checkInTypes.length === 0}>
                 <QrCode className="w-5 h-5" />
                 Start Scanner
-              </Button>
-            </div>
-          )}
-
-          {scanning && (
-            <div className="p-4 text-center border-t">
-              <Button variant="outline" onClick={async () => {
-                await stopScanner();
-                setFocusMode(false);
-              }}>
-                Stop Scanner
               </Button>
             </div>
           )}
@@ -332,6 +406,7 @@ const QRScannerPage = () => {
               variant="outline" 
               className="w-full"
               onClick={startScanner}
+              disabled={!selectedTypeId}
             >
               <RefreshCw className="w-4 h-4" />
               Scan Another

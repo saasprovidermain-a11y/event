@@ -1,28 +1,36 @@
+
+
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import { collection, addDoc, getDocs, query, where,getCountFromServer } from 'firebase/firestore';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Event } from '@/types';
+import { Event, Participant, CheckInTypeDefinition } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, Loader2, CheckCircle, AlertCircle, User, Mail, Phone, Tag } from 'lucide-react';
+import { Calendar, Loader2, CheckCircle, AlertCircle, User, Mail, Phone, Tag, Home, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
+import Link from 'next/link';
+import { ParticipantCard } from '@/components/ParticipantCard';
+import html2canvas from 'html2canvas';
 
 const PublicRegistrationPage = () => {
   const params = useParams();
   const eventId = params.eventId;
   
   const [event, setEvent] = useState<Event | null>(null);
+  const [checkInTypes, setCheckInTypes] = useState<CheckInTypeDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [newParticipant, setNewParticipant] = useState<Participant | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -49,6 +57,15 @@ const PublicRegistrationPage = () => {
             id: snapshot.docs[0].id,
           } as Event;
           setEvent(eventData);
+
+          const checkInTypeQuery = query(collection(db, 'checkInTypes'), where('eventId', '==', eventData.id));
+          const checkInTypeSnapshot = await getDocs(checkInTypeQuery);
+          const checkInData = checkInTypeSnapshot.docs.map((doc) => ({
+            ...doc.data(),
+            id: doc.id,
+          })) as CheckInTypeDefinition[];
+          setCheckInTypes(checkInData);
+
         } else {
           setError('This registration link is invalid or has expired.');
         }
@@ -103,14 +120,9 @@ const PublicRegistrationPage = () => {
       }
 
       const participantId = uuidv4();
+      const registrationNumber = `REG-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`;
 
-      const participantsColl = collection(db, 'participants');
-      const q = query(participantsColl, where('eventId', '==', event.id));
-      const snapshot = await getCountFromServer(q);
-      const registrationNumber = snapshot.data().count + 1;
-
-
-      await addDoc(collection(db, 'participants'), {
+      const participantData: Omit<Participant, 'id'> = {
         eventId: event.id,
         organizerId: event.organizerId,
         fullName: formData.fullName.trim(),
@@ -122,8 +134,10 @@ const PublicRegistrationPage = () => {
         qrCode: participantId,
         checkIns: [],
         registrationNumber,
-      });
+      };
 
+      const docRef = await addDoc(collection(db, 'participants'), participantData);
+      setNewParticipant({ ...participantData, id: docRef.id });
       setSuccess(true);
       toast.success('Registration successful! We look forward to seeing you.');
     } catch (err) {
@@ -131,6 +145,27 @@ const PublicRegistrationPage = () => {
       toast.error('Registration failed. Please check your details and try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const downloadCard = async () => {
+    if (!cardRef.current) return;
+
+    try {
+      const canvas = await html2canvas(cardRef.current, {
+        scale: 2,
+        backgroundColor: document.documentElement.classList.contains('dark') ? '#1c2532' : '#ffffff',
+        useCORS: true
+      });
+      
+      const link = document.createElement('a');
+      link.download = `${newParticipant?.fullName.replace(/\s+/g, '_')}_ID_Card.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      
+      toast.success('ID Card downloaded!');
+    } catch (err) {
+      toast.error('Failed to download ID Card');
     }
   };
 
@@ -156,27 +191,45 @@ const PublicRegistrationPage = () => {
     );
   }
 
-  if (success) {
+  if (success && newParticipant) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4 py-12">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-accent/20 rounded-full blur-3xl" />
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
         </div>
         
         <Card className="w-full max-w-md text-center shadow-xl border-0 animate-scale-in">
-          <CardContent className="py-12">
+          <CardHeader>
             <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="w-10 h-10 text-accent" />
             </div>
             <h2 className="text-2xl font-sans font-bold mb-2">Registration Successful!</h2>
-            <p className="text-muted-foreground mb-6">
-              Thank you for registering for <span className="font-medium text-foreground">{event.name}</span>. 
-              Your personalized ID card will be provided at the event entrance.
+            <p className="text-muted-foreground">
+              Thank you for registering for <span className="font-medium text-foreground">{event.name}</span>.
+              You can download your ID card now.
             </p>
-            <p className="text-sm text-muted-foreground">
-              A confirmation email has been sent to <span className="font-medium text-foreground">{formData.email}</span>.
-            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="fixed -left-[9999px] top-0 p-1">
+              <div ref={cardRef}>
+                <ParticipantCard 
+                  participant={newParticipant} 
+                  event={event} 
+                  checkInTypes={checkInTypes} 
+                />
+              </div>
+            </div>
+            <Button variant="gradient" size="lg" className="w-full" onClick={downloadCard}>
+                <Download className="w-5 h-5" />
+                Download ID Card
+            </Button>
+            <Link href="/">
+                <Button variant="outline" className="w-full">
+                    <Home className="w-4 h-4 mr-2" />
+                    Go to Homepage
+                </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

@@ -1,15 +1,15 @@
+
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBiEJXTeWkiNW02VVzUYxkAZEVRE0L4yXU",
-  authDomain: "event-95565.firebaseapp.com",
-  projectId: "event-95565",
-  storageBucket: "event-95565.appspot.com",
-  messagingSenderId: "953933612028",
-  appId: "1:953933612028:web:7a1ba8632aead6a3266879",
-  measurementId: "G-2CFQVZV3ZD"
+  "projectId": "studio-8613077300-bd252",
+  "appId": "1:381806406990:web:eb5c056bee08ba93b9c21f",
+  "apiKey": "AIzaSyBNlwV2eIWmHgiH0fBvZzhtJKsZwfK2BLs",
+  "authDomain": "studio-8613077300-bd252.firebaseapp.com",
+  "measurementId": "",
+  "messagingSenderId": "381806406990"
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
