@@ -48,32 +48,32 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent/10 rounded-full blur-3xl" />
+        <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 bg-accent/5 rounded-full blur-3xl" />
       </div>
 
-      <Card className="w-full max-w-md relative animate-scale-in shadow-xl border-0 bg-card/80 backdrop-blur-sm">
-        <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <Calendar className="w-8 h-8 text-primary-foreground" />
+      <Card className="w-full max-w-md relative animate-scale-in border-border/50 shadow-xl">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 w-14 h-14 bg-primary rounded-lg flex items-center justify-center">
+            <Calendar className="w-7 h-7 text-primary-foreground" />
           </div>
-          <CardTitle className="text-3xl font-sans">EventHub</CardTitle>
-          <CardDescription className="text-base">Sign in to manage your events</CardDescription>
+          <CardTitle className="text-3xl font-bold">EventManager</CardTitle>
+          <CardDescription className="text-muted-foreground">Sign in to manage your events</CardDescription>
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                <AlertCircle className="w-4 h-4" />
-                {error}
+              <div className="flex items-center gap-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="w-5 h-5" />
+                <p>{error}</p>
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="font-bold">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -86,7 +86,7 @@ const Login = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password"  className="font-bold">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -98,10 +98,10 @@ const Login = () => {
               />
             </div>
 
-            <Button type="submit" variant="gradient" size="lg" className="w-full" disabled={loading}>
+            <Button type="submit" variant="default" size="lg" className="w-full font-bold" disabled={loading}>
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   Signing in...
                 </>
               ) : (

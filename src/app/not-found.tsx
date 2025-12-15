@@ -11,7 +11,7 @@ export default function NotFound() {
         Oops! The page you are looking for does not exist. It might have been moved or deleted.
       </p>
       <Link href="/">
-        <Button variant="gradient">Return to Homepage</Button>
+        <Button variant="default">Return to Homepage</Button>
       </Link>
     </div>
   );

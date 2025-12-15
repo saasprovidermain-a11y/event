@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -139,7 +137,7 @@ const PublicRegistrationPage = () => {
       const docRef = await addDoc(collection(db, 'participants'), participantData);
       setNewParticipant({ ...participantData, id: docRef.id });
       setSuccess(true);
-      toast.success('Registration successful! We look forward to seeing you.');
+      toast.success('Registration successful! Your ID card is ready.');
     } catch (err) {
       console.error(err)
       toast.error('Registration failed. Please check your details and try again.');
@@ -154,7 +152,7 @@ const PublicRegistrationPage = () => {
     try {
       const canvas = await html2canvas(cardRef.current, {
         scale: 2,
-        backgroundColor: document.documentElement.classList.contains('dark') ? '#1c2532' : '#ffffff',
+        backgroundColor: null,
         useCORS: true
       });
       
@@ -171,7 +169,7 @@ const PublicRegistrationPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -179,11 +177,11 @@ const PublicRegistrationPage = () => {
 
   if (error || !event) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4">
-        <Card className="w-full max-w-md text-center shadow-xl border-0">
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md text-center shadow-xl">
           <CardContent className="py-12">
             <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Registration Unavailable</h2>
+            <h2 className="text-xl font-bold mb-2">Registration Unavailable</h2>
             <p className="text-muted-foreground">{error || 'The event you are looking for could not be found.'}</p>
           </CardContent>
         </Card>
@@ -193,40 +191,39 @@ const PublicRegistrationPage = () => {
 
   if (success && newParticipant) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4 py-12">
+      <div className="min-h-screen flex items-center justify-center bg-background p-4 py-12">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-accent/20 rounded-full blur-3xl" />
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
+          <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-accent/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 bg-primary/5 rounded-full blur-3xl" />
         </div>
         
-        <Card className="w-full max-w-md text-center shadow-xl border-0 animate-scale-in">
+        <Card className="w-full max-w-md text-center animate-scale-in shadow-xl">
           <CardHeader>
-            <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-accent" />
+            <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
-            <h2 className="text-2xl font-sans font-bold mb-2">Registration Successful!</h2>
+            <h2 className="text-2xl font-bold mb-2">Registration Successful!</h2>
             <p className="text-muted-foreground">
               Thank you for registering for <span className="font-medium text-foreground">{event.name}</span>.
               You can download your ID card now.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="fixed -left-[9999px] top-0 p-1">
-              <div ref={cardRef}>
+            <div className="fixed -left-[9999px] top-0 p-1 bg-card">
                 <ParticipantCard 
                   participant={newParticipant} 
                   event={event} 
                   checkInTypes={checkInTypes} 
+                  ref={cardRef}
                 />
-              </div>
             </div>
-            <Button variant="gradient" size="lg" className="w-full" onClick={downloadCard}>
+            <Button variant="default" size="lg" className="w-full font-bold" onClick={downloadCard}>
                 <Download className="w-5 h-5" />
                 Download ID Card
             </Button>
             <Link href="/">
-                <Button variant="outline" className="w-full">
-                    <Home className="w-4 h-4 mr-2" />
+                <Button variant="outline" className="w-full font-bold">
+                    <Home className="w-4 h-4" />
                     Go to Homepage
                 </Button>
             </Link>
@@ -237,27 +234,27 @@ const PublicRegistrationPage = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4 py-12">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent/10 rounded-full blur-3xl" />
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 py-12">
+       <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 bg-accent/5 rounded-full blur-3xl" />
       </div>
       
-      <Card className="w-full max-w-lg relative animate-scale-in shadow-xl border-0 bg-card/80 backdrop-blur-sm">
-        <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <Calendar className="w-8 h-8 text-primary-foreground" />
+      <Card className="w-full max-w-lg relative animate-scale-in shadow-xl">
+        <CardHeader className="text-center pb-4">
+          <div className="mx-auto mb-4 w-14 h-14 bg-primary rounded-lg flex items-center justify-center">
+            <Calendar className="w-7 h-7 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl font-sans">{event.name}</CardTitle>
+          <CardTitle className="text-2xl font-bold">{event.name}</CardTitle>
           {event.description && (
-            <CardDescription className="text-base">{event.description}</CardDescription>
+            <CardDescription className="text-muted-foreground pt-1">{event.description}</CardDescription>
           )}
         </CardHeader>
         
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="fullName" className="flex items-center gap-2">
+              <Label htmlFor="fullName" className="flex items-center gap-2 font-bold">
                 <User className="w-4 h-4 text-muted-foreground" />
                 Full Name
               </Label>
@@ -272,7 +269,7 @@ const PublicRegistrationPage = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="email" className="flex items-center gap-2">
+              <Label htmlFor="email" className="flex items-center gap-2 font-bold">
                 <Mail className="w-4 h-4 text-muted-foreground" />
                 Email Address
               </Label>
@@ -288,7 +285,7 @@ const PublicRegistrationPage = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="phone" className="flex items-center gap-2">
+              <Label htmlFor="phone" className="flex items-center gap-2 font-bold">
                 <Phone className="w-4 h-4 text-muted-foreground" />
                 Phone Number
               </Label>
@@ -304,7 +301,7 @@ const PublicRegistrationPage = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="category" className="flex items-center gap-2">
+              <Label htmlFor="category" className="flex items-center gap-2 font-bold">
                 <Tag className="w-4 h-4 text-muted-foreground" />
                 Registration Category
               </Label>
@@ -314,12 +311,12 @@ const PublicRegistrationPage = () => {
                 required
                 disabled={submitting}
               >
-                <SelectTrigger>
+                <SelectTrigger className="font-bold">
                   <SelectValue placeholder="Select your category" />
                 </SelectTrigger>
                 <SelectContent>
                   {event.categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
+                    <SelectItem key={cat.id} value={cat.id} className="font-bold">
                       <div className="flex items-center gap-2">
                         <div 
                           className="w-3 h-3 rounded-full"
@@ -335,14 +332,14 @@ const PublicRegistrationPage = () => {
             
             <Button 
               type="submit" 
-              variant="gradient"
+              variant="default"
               size="lg"
-              className="w-full"
+              className="w-full font-bold"
               disabled={submitting || !formData.category}
             >
               {submitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   Registering...
                 </>
               ) : (

@@ -1,4 +1,3 @@
-
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { collection, addDoc, getDocs, query, where, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
@@ -57,10 +56,6 @@ const AdminDashboard = () => {
 
   const handleCreateOrganizer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newOrganizer.password.length < 6) {
-      toast.error('Password must be at least 6 characters long.');
-      return;
-    }
     setCreating(true);
 
     try {
@@ -73,8 +68,8 @@ const AdminDashboard = () => {
       }
       
       const newUser = {
-        email: newOrganizer.email,
-        displayName: newOrganizer.displayName,
+        email: newOrganizer.email.toLowerCase().trim(),
+        displayName: newOrganizer.displayName.trim(),
         role: 'organizer',
         createdAt: serverTimestamp(),
         createdBy: userData?.uid,
@@ -120,7 +115,7 @@ const AdminDashboard = () => {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-sans font-bold text-foreground">Admin Dashboard</h1>
+          <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
           <p className="text-muted-foreground mt-1">Manage event organizers and system settings</p>
         </div>
         <div className="flex items-center gap-2">
@@ -130,21 +125,21 @@ const AdminDashboard = () => {
           </Button>
           <Dialog open={organizerDialogOpen} onOpenChange={setOrganizerDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="gradient" size="default" className="w-full sm:w-auto">
+              <Button variant="default" className="font-bold">
                 <UserPlus className="w-4 h-4" />
                 Add Organizer
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
-                <DialogTitle>Create New Organizer</DialogTitle>
+                <DialogTitle className="font-bold">Create New Organizer</DialogTitle>
                 <DialogDescription>
                   This creates an organizer profile. The user can then sign up with this email.
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleCreateOrganizer} className="space-y-4">
+              <form onSubmit={handleCreateOrganizer} className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Display Name</Label>
+                  <Label htmlFor="name" className="font-bold">Display Name</Label>
                   <Input
                     id="name"
                     placeholder="John Doe"
@@ -154,7 +149,7 @@ const AdminDashboard = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email" className="font-bold">Email</Label>
                   <Input
                     id="email"
                     type="email"
@@ -164,8 +159,8 @@ const AdminDashboard = () => {
                     required
                   />
                 </div>
-                <DialogFooter>
-                  <Button type="submit" variant="gradient" className="w-full" disabled={creating}>
+                <DialogFooter className="pt-4">
+                  <Button type="submit" variant="default" className="w-full font-bold" disabled={creating}>
                     {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Organizer Profile' }
                   </Button>
                 </DialogFooter>
@@ -176,74 +171,80 @@ const AdminDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="border-0 shadow-md">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Organizers</CardTitle>
-            <Users className="w-5 h-5 text-primary" />
+            <CardTitle className="text-sm font-bold">Total Organizers</CardTitle>
+            <Users className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{organizers.length}</div>
           </CardContent>
         </Card>
         
-        <Card className="border-0 shadow-md">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Your Role</CardTitle>
-            <Shield className="w-5 h-5 text-accent" />
+            <CardTitle className="text-sm font-bold">Your Role</CardTitle>
+            <Shield className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <Badge variant="default" className="text-sm capitalize">{userData?.role}</Badge>
+            <Badge variant="secondary" className="text-sm capitalize font-bold bg-accent/20 text-accent-foreground border-accent">{userData?.role}</Badge>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="border-0 shadow-md">
+      <Card>
         <CardHeader>
-          <CardTitle>Event Organizers</CardTitle>
+          <CardTitle className="font-bold">Event Organizers</CardTitle>
           <CardDescription>A list of all registered event organizers.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
           ) : organizers.length === 0 ? (
-            <div className="text-center py-12"><p>No organizers found.</p></div>
+            <div className="text-center py-16 border-2 border-dashed border-border rounded-lg">
+              <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-bold">No Organizers Found</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Get started by adding a new organizer.</p>
+            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {organizers.map((org) => (
-                  <TableRow key={org.email}>
-                    <TableCell className="font-medium">{org.displayName || 'N/A'}</TableCell>
-                    <TableCell>{org.email}</TableCell>
-                    <TableCell className="text-right">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="w-4 h-4" /></Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Are you sure?</DialogTitle>
-                            <DialogDescription>
-                              This will delete the organizer profile for <span className="font-medium text-foreground">{org.displayName || org.email}</span>. This does not delete their authentication account.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter>
-                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                            <Button variant="destructive" onClick={() => handleDeleteOrganizer(org)}>Delete</Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-bold">Name</TableHead>
+                    <TableHead className="font-bold">Email</TableHead>
+                    <TableHead className="text-right font-bold">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {organizers.map((org) => (
+                    <TableRow key={org.email}>
+                      <TableCell className="font-bold">{org.displayName || 'N/A'}</TableCell>
+                      <TableCell>{org.email}</TableCell>
+                      <TableCell className="text-right">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle className="font-bold">Are you sure?</DialogTitle>
+                              <DialogDescription>
+                                This will delete the organizer profile for <span className="font-bold text-foreground">{org.displayName || org.email}</span>. This does not delete their authentication account.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                              <DialogClose asChild><Button variant="outline" className="font-bold">Cancel</Button></DialogClose>
+                              <Button variant="destructive" className="font-bold" onClick={() => handleDeleteOrganizer(org)}>Delete</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -1,17 +1,18 @@
 import type { Metadata } from 'next';
 import { Roboto } from 'next/font/google';
 import { Providers } from './providers';
-import '../index.css';
+import './../index.css';
 import { Toasters } from '@/components/toasters';
+import Script from 'next/script';
 
 const roboto = Roboto({
   subsets: ['latin'],
-  weight: ['300', '400', '500', '700'],
+  weight: ['300', '400', '500', '700', '900'],
   variable: '--font-roboto',
 });
 
 export const metadata: Metadata = {
-  title: 'EventHub',
+  title: 'EventManager',
   description: 'Event Management Made Simple',
 };
 

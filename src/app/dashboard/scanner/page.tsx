@@ -1,4 +1,3 @@
-
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, getDocs, query, where, updateDoc, doc, arrayUnion } from 'firebase/firestore';
@@ -34,8 +33,8 @@ import {
 import { toast } from 'sonner';
 import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode';
 import { cn } from '@/lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-// Helper to map category names to icons
 const getCategoryIcon = (categoryName: string) => {
   const name = categoryName.toLowerCase();
   if (name.includes('food')) return Coffee;
@@ -59,6 +58,7 @@ const QRScannerPage = () => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -104,9 +104,16 @@ const QRScannerPage = () => {
       toast.warning('Please select a check-in type first.');
       return;
     }
+
     try {
+      // Check for camera permissions before starting
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      setHasCameraPermission(true);
+
       if (!isInitialized) {
-        scannerRef.current = new Html5Qrcode('qr-reader');
+        scannerRef.current = new Html5Qrcode('qr-reader', {
+            verbose: false,
+        });
         setIsInitialized(true);
       }
 
@@ -119,15 +126,15 @@ const QRScannerPage = () => {
         { facingMode: 'environment' },
         { 
           fps: 10,
-          // No qrbox property means full screen scanning
         },
         handleScan,
         () => {}
       );
     } catch (err) {
+      setHasCameraPermission(false);
       setScanning(false);
       setFocusMode(false);
-      toast.error('Failed to access camera. Please allow camera permissions.');
+      toast.error('Camera permission denied. Please enable it in your browser settings.');
     }
   };
 
@@ -137,7 +144,7 @@ const QRScannerPage = () => {
         await scannerRef.current?.stop();
       }
     } catch (err) {
-      // Ignore errors when stopping, as it can throw if already stopped.
+      // Ignore errors when stopping
     } finally {
       setScanning(false);
       setFocusMode(false);
@@ -145,10 +152,10 @@ const QRScannerPage = () => {
   };
 
   const handleScan = async (qrCode: string) => {
-    await stopScanner(); // Stop scanning immediately after a detection
+    await stopScanner();
     if (!event || !currentUser) return;
   
-    setFocusMode(false); // Exit focus mode to show results
+    setFocusMode(false);
   
     try {
       const participantQuery = query(
@@ -196,7 +203,7 @@ const QRScannerPage = () => {
   
       setScanResult('success');
       setScanMessage(`${selectedType.name} recorded successfully!`);
-      // Update participant object locally to reflect new check-in for the UI
+
       const updatedParticipant = {
         ...participant,
         checkIns: [
@@ -215,7 +222,7 @@ const QRScannerPage = () => {
     } catch (err) {
       console.error(err);
       setScanResult('not-found');
-      setScanMessage('An error occurred while processing the scan. Please try again.');
+      setScanMessage('An error occurred. Please try again.');
       toast.error('Failed to process scan.');
     }
   };
@@ -224,13 +231,13 @@ const QRScannerPage = () => {
     return checkInCategories.map(category => ({
       ...category,
       types: checkInTypes.filter(type => type.categoryId === category.id)
-    })).filter(category => category.types.length > 0); // Only show categories with types
+    })).filter(category => category.types.length > 0);
   }, [checkInCategories, checkInTypes]);
 
 
   if (loadingData) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -239,7 +246,7 @@ const QRScannerPage = () => {
   if (!event) {
     return (
       <div className="text-center">
-        <h1 className="text-3xl font-sans font-bold text-foreground">QR Scanner</h1>
+        <h1 className="text-3xl font-bold text-foreground">QR Scanner</h1>
         <p className="text-muted-foreground mt-1">You must create an event before you can use the scanner.</p>
       </div>
     );
@@ -264,13 +271,13 @@ const QRScannerPage = () => {
       )}
 
       <div className={cn('text-center', focusMode && 'hidden')}>
-        <h1 className="text-3xl font-sans font-bold text-foreground">QR Scanner</h1>
+        <h1 className="text-3xl font-bold text-foreground">QR Scanner</h1>
         <p className="text-muted-foreground mt-1">Scan participant QR codes for check-ins</p>
       </div>
 
-      <Card className={cn('border-0 shadow-md', focusMode && 'hidden')}>
+      <Card className={cn(focusMode && 'hidden')}>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">1. Select Check-in Type</CardTitle>
+          <CardTitle className="text-lg font-bold">1. Select Check-in Type</CardTitle>
           <CardDescription>Choose what you are scanning for.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -280,23 +287,23 @@ const QRScannerPage = () => {
                     const Icon = getCategoryIcon(category.name);
                     return (
                       <AccordionItem value={category.id} key={category.id}>
-                        <AccordionTrigger className="text-base">
+                        <AccordionTrigger className="text-base font-bold">
                           <div className="flex items-center gap-3">
                             <Icon className="w-5 h-5 text-primary" />
                             {category.name}
                           </div>
                         </AccordionTrigger>
                         <AccordionContent>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-2">
                             {category.types.map((type) => (
                               <Button
                                   key={type.id}
-                                  variant={selectedTypeId === type.id ? 'default' : 'outline'}
-                                  className="flex flex-col h-auto py-3 gap-1.5"
+                                  variant={selectedTypeId === type.id ? 'secondary' : 'outline'}
+                                  className="flex flex-col h-auto py-3 gap-1.5 text-center font-bold"
                                   onClick={() => setSelectedTypeId(type.id)}
                               >
                                   <Ticket className="w-5 h-5" />
-                                  <span className="text-xs sm:text-sm text-center">{type.name}</span>
+                                  <span className="text-xs sm:text-sm whitespace-normal">{type.name}</span>
                               </Button>
                             ))}
                           </div>
@@ -311,21 +318,33 @@ const QRScannerPage = () => {
         </CardContent>
       </Card>
 
-      <Card className={cn('border-0 shadow-md overflow-hidden', focusMode && 'h-full flex flex-col')}>
+      <Card className={cn('overflow-hidden', focusMode && 'h-full flex flex-col border-0 shadow-none')}>
         <CardHeader className={cn("flex flex-row items-center justify-between", focusMode && 'hidden')}>
-          <CardTitle className="text-lg">2. Scan QR Code</CardTitle>
+          <div>
+            <CardTitle className="text-lg font-bold">2. Scan QR Code</CardTitle>
+            <CardDescription>Position the QR code inside the frame.</CardDescription>
+          </div>
         </CardHeader>
         <CardContent className={cn("p-0 flex flex-col justify-center items-center", focusMode && 'h-full flex-1')}>
-          <div id="qr-reader" className="w-full bg-secondary/5" />
+          <div id="qr-reader" className="w-full bg-secondary/20" />
           
           {!scanning && !focusMode && (
-            <div className="p-8 text-center">
-              <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Camera className="w-12 h-12 text-primary" />
+            <div className="p-8 text-center space-y-4">
+              {hasCameraPermission === false && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle className="font-bold">Camera Access Denied</AlertTitle>
+                  <AlertDescription>
+                    Please enable camera permissions in your browser settings to use the scanner.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                <Camera className="w-10 h-10 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">Ready to Scan</h3>
-              <p className="text-muted-foreground text-sm mb-6">
-                Click the button below to activate the camera and start scanning.
+              <h3 className="text-lg font-bold">Ready to Scan</h3>
+              <p className="text-muted-foreground text-sm max-w-xs mx-auto">
+                Select a check-in type, then click the button below to start scanning.
               </p>
               <Button variant="gradient" size="lg" onClick={startScanner} disabled={!selectedTypeId || checkInTypes.length === 0}>
                 <QrCode className="w-5 h-5" />
@@ -337,28 +356,24 @@ const QRScannerPage = () => {
       </Card>
 
       {scanResult && !focusMode && (
-        <Card className={cn(`border-0 shadow-md animate-scale-in ${
-          scanResult === 'success' ? 'bg-accent/5' :
-          scanResult === 'duplicate' ? 'bg-amber-500/5' :
-          'bg-destructive/5'
+        <Card className={cn(`animate-scale-in border-t-4 ${
+          scanResult === 'success' ? 'border-green-500' :
+          scanResult === 'duplicate' ? 'border-amber-500' :
+          'border-destructive'
         }`)}>
           <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                scanResult === 'success' ? 'bg-accent/20 text-accent' :
-                scanResult === 'duplicate' ? 'bg-amber-500/20 text-amber-600' :
-                'bg-destructive/20 text-destructive'
+            <div className="flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
+                scanResult === 'success' ? 'bg-green-500/10 text-green-500' :
+                scanResult === 'duplicate' ? 'bg-amber-500/10 text-amber-500' :
+                'bg-destructive/10 text-destructive'
               }`}>
                 {scanResult === 'success' && <CheckCircle className="w-6 h-6" />}
                 {scanResult === 'duplicate' && <AlertTriangle className="w-6 h-6" />}
                 {scanResult === 'not-found' && <XCircle className="w-6 h-6" />}
               </div>
               <div>
-                <CardTitle className={`text-lg ${
-                  scanResult === 'success' ? 'text-accent' :
-                  scanResult === 'duplicate' ? 'text-amber-600' :
-                  'text-destructive'
-                }`}>
+                <CardTitle className={`text-lg font-bold`}>
                   {scanResult === 'success' ? 'Scan Successful' :
                    scanResult === 'duplicate' ? 'Duplicate Scan' :
                    'Scan Failed'}
@@ -370,31 +385,30 @@ const QRScannerPage = () => {
           
           {lastScanned && (
             <CardContent>
-              <div className="mt-2 p-4 rounded-lg bg-card border">
-                <div className="flex items-center justify-between mb-2">
-                   <h4 className="font-semibold">Participant Details</h4>
+              <div className="mt-2 p-4 rounded-lg bg-secondary">
+                <div className="flex items-center justify-between mb-3">
+                   <h4 className="font-bold">Participant Details</h4>
                    <Badge style={{ 
                       backgroundColor: lastScanned.categoryColor,
-                      color: '#fff',
-                      borderColor: lastScanned.categoryColor
+                      color: '#000',
                     }}
-                    variant="outline"
-                   >
+                    className="font-bold"
+                    >
                       {lastScanned.category}
                     </Badge>
                 </div>
                 <div className="space-y-2 text-sm">
-                  <p className="flex items-center gap-2">
+                  <p className="flex items-center gap-3">
                     <User className="w-4 h-4 text-muted-foreground" />
-                    {lastScanned.fullName}
+                    <span className="font-bold">{lastScanned.fullName}</span>
                   </p>
-                  <p className="flex items-center gap-2">
+                  <p className="flex items-center gap-3">
                     <Mail className="w-4 h-4 text-muted-foreground" />
-                    {lastScanned.email}
+                    <span className="text-muted-foreground">{lastScanned.email}</span>
                   </p>
-                  <p className="flex items-center gap-2">
+                  <p className="flex items-center gap-3">
                     <Phone className="w-4 h-4 text-muted-foreground" />
-                    {lastScanned.phone}
+                    <span className="text-muted-foreground">{lastScanned.phone}</span>
                   </p>
                 </div>
               </div>
@@ -404,7 +418,7 @@ const QRScannerPage = () => {
           <div className="p-6 pt-0">
             <Button 
               variant="outline" 
-              className="w-full"
+              className="w-full font-bold"
               onClick={startScanner}
               disabled={!selectedTypeId}
             >

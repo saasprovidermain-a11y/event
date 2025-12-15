@@ -1,4 +1,3 @@
-
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { collection, addDoc, getDocs, query, where, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
@@ -39,13 +38,15 @@ import {
   RefreshCw,
   Ticket,
   Settings,
-  FolderPlus
+  FolderPlus,
+  FileDown,
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Separator } from '../ui/separator';
+import * as XLSX from 'xlsx';
 
 const CATEGORY_COLORS = [
   '#3B82F6',
@@ -131,6 +132,40 @@ const OrganizerDashboard = () => {
     fetchEventAndParticipants();
   }, [fetchEventAndParticipants]);
 
+  const handleExportToExcel = () => {
+    if (!event) return;
+
+    const dataToExport = participants.map(p => {
+        const checkInData: {[key: string]: string} = {};
+        checkInTypes.forEach(type => {
+            const checkIn = p.checkIns.find(ci => ci.typeId === type.id);
+            checkInData[`Scanned for: ${type.name}`] = checkIn 
+                ? new Date(checkIn.timestamp).toLocaleString() 
+                : 'No';
+        });
+
+        const registeredAtDate = p.registeredAt?.toDate ? p.registeredAt.toDate() : new Date(p.registeredAt);
+
+        return {
+            'Reg. No.': p.registrationNumber,
+            'Full Name': p.fullName,
+            'Email': p.email,
+            'Phone': p.phone,
+            'Category': p.category,
+            'Registered At': registeredAtDate.toLocaleString(),
+            ...checkInData,
+        };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Participants');
+
+    XLSX.writeFile(workbook, `${event.name.replace(/\s+/g, '_')}_Participants.xlsx`);
+    toast.success("Participant data exported successfully!");
+};
+
+
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newEvent.categories.some((cat) => !cat.name.trim())) {
@@ -178,21 +213,28 @@ const OrganizerDashboard = () => {
 
   const handleCreateCheckInCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCategoryName.trim() || !event) {
+    if (!newCategoryName.trim() || !event || !currentUser) {
         toast.error('Category name cannot be empty.');
         return;
     }
     setCreating(true);
     try {
-        await addDoc(collection(db, 'checkInCategories'), {
+        const categoryPayload = {
             name: newCategoryName,
             eventId: event.id,
-            organizerId: currentUser?.uid,
+            organizerId: currentUser.uid,
             createdAt: serverTimestamp(),
-        });
-        toast.success('Check-in category created!');
+        };
+        const docRef = await addDoc(collection(db, 'checkInCategories'), categoryPayload);
+        
+        const newCategory: CheckInCategory = {
+            ...categoryPayload,
+            id: docRef.id,
+        };
+
+        setCheckInCategories(prev => [...prev, newCategory]);
         setNewCategoryName('');
-        await fetchEventAndParticipants();
+        toast.success('Check-in category created!');
     } catch (error) {
         toast.error('Failed to create category.');
     } finally {
@@ -202,23 +244,30 @@ const OrganizerDashboard = () => {
 
   const handleCreateCheckInType = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCheckInTypeName.trim() || !event || !selectedCheckInCategoryId) {
+    if (!newCheckInTypeName.trim() || !event || !selectedCheckInCategoryId || !currentUser) {
         toast.error('Check-in type name and category are required.');
         return;
     }
     setCreating(true);
     try {
-        await addDoc(collection(db, 'checkInTypes'), {
+        const typePayload = {
             name: newCheckInTypeName,
             eventId: event.id,
-            organizerId: currentUser?.uid,
+            organizerId: currentUser.uid,
             categoryId: selectedCheckInCategoryId,
             createdAt: serverTimestamp(),
-        });
-        toast.success('Check-in type created successfully!');
+        };
+        const docRef = await addDoc(collection(db, 'checkInTypes'), typePayload);
+
+        const newType: CheckInTypeDefinition = {
+            ...typePayload,
+            id: docRef.id,
+        };
+
+        setCheckInTypes(prev => [...prev, newType]);
         setNewCheckInTypeName('');
         setSelectedCheckInCategoryId('');
-        await fetchEventAndParticipants();
+        toast.success('Check-in type created successfully!');
     } catch (error) {
         toast.error('Failed to create check-in type.');
     } finally {
@@ -229,8 +278,8 @@ const OrganizerDashboard = () => {
   const handleDeleteCheckInType = async (typeId: string) => {
     try {
         await deleteDoc(doc(db, 'checkInTypes', typeId));
+        setCheckInTypes(prev => prev.filter(t => t.id !== typeId));
         toast.success('Check-in type deleted successfully.');
-        await fetchEventAndParticipants();
     } catch (error) {
         toast.error('Failed to delete check-in type.');
     }
@@ -238,14 +287,14 @@ const OrganizerDashboard = () => {
 
     const handleDeleteCategory = async (categoryId: string) => {
     try {
-        const typesInCateogry = checkInTypes.filter(t => t.categoryId === categoryId);
-        if (typesInCateogry.length > 0) {
+        const typesInCategory = checkInTypes.filter(t => t.categoryId === categoryId);
+        if (typesInCategory.length > 0) {
             toast.error('Cannot delete category with active check-in types.');
             return;
         }
         await deleteDoc(doc(db, 'checkInCategories', categoryId));
+        setCheckInCategories(prev => prev.filter(c => c.id !== categoryId));
         toast.success('Category deleted successfully.');
-        await fetchEventAndParticipants();
     } catch (error) {
         toast.error('Failed to delete category.');
     }
@@ -322,7 +371,7 @@ const OrganizerDashboard = () => {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-sans font-bold text-foreground">
+          <h1 className="text-3xl font-bold text-foreground">
             {event ? event.name : 'Organizer Dashboard'}
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -334,56 +383,61 @@ const OrganizerDashboard = () => {
         <div className="flex items-center gap-2">
           {event && (
             <>
+              <Button variant="outline" onClick={handleExportToExcel} disabled={participants.length === 0} className="font-bold hidden sm:inline-flex">
+                <FileDown className="w-4 h-4 mr-2" />
+                Export Excel
+              </Button>
               <Dialog open={checkInManagementDialogOpen} onOpenChange={setCheckInManagementDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline">
+                  <Button variant="outline" className="font-bold">
                       <Settings className="w-4 h-4 mr-2" />
                       Manage Check-ins
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                      <DialogTitle>Manage Check-in Types</DialogTitle>
+                      <DialogTitle className="font-bold">Manage Check-in Types</DialogTitle>
                       <DialogDescription>Add or remove categories and check-in types for this event.</DialogDescription>
                     </DialogHeader>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8 py-4">
                       {/* Category Management */}
                       <div className="space-y-4">
-                        <h3 className="font-semibold text-lg flex items-center gap-2"><FolderPlus className="w-5 h-5 text-primary" /> Categories</h3>
+                        <h3 className="font-bold text-lg flex items-center gap-2"><FolderPlus className="w-5 h-5 text-primary" /> Categories</h3>
                         <form onSubmit={handleCreateCheckInCategory} className="flex items-center gap-2">
                           <Input 
                             value={newCategoryName}
                             onChange={(e) => setNewCategoryName(e.target.value)}
                             placeholder="New category name..."
                             required
+                            className="font-bold"
                           />
-                          <Button type="submit" disabled={creating} className="shrink-0">
+                          <Button type="submit" disabled={creating} className="shrink-0 font-bold">
                             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
                           </Button>
                         </form>
                         <ScrollArea className="rounded-lg border h-48">
-                          <Table>
+                           {checkInCategories.length === 0 && (
+                              <div className="text-center text-muted-foreground h-full flex items-center justify-center p-4 font-bold">No categories created.</div>
+                           )}
+                           <Table>
                             <TableBody>
-                               {checkInCategories.length === 0 && (
-                                  <TableRow><TableCell className="text-center text-muted-foreground h-24">No categories created.</TableCell></TableRow>
-                               )}
                                {checkInCategories.map((cat) => (
                                 <TableRow key={cat.id}>
-                                  <TableCell className="font-medium">{cat.name}</TableCell>
+                                  <TableCell className="font-bold">{cat.name}</TableCell>
                                   <TableCell className="text-right">
                                     <Dialog>
-                                      <DialogTrigger asChild><Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="w-4 h-4" /></Button></DialogTrigger>
+                                      <DialogTrigger asChild><Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></Button></DialogTrigger>
                                       <DialogContent>
                                         <DialogHeader>
-                                          <DialogTitle>Delete Category?</DialogTitle>
+                                          <DialogTitle className="font-bold">Delete Category?</DialogTitle>
                                           <DialogDescription>
                                             Are you sure you want to delete "{cat.name}"? This action cannot be undone. You must delete all check-in types within this category first.
                                           </DialogDescription>
                                         </DialogHeader>
                                         <DialogFooter>
-                                          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                          <Button variant="destructive" onClick={() => handleDeleteCategory(cat.id)}>Delete</Button>
+                                          <DialogClose asChild><Button variant="outline" className="font-bold">Cancel</Button></DialogClose>
+                                          <Button variant="destructive" className="font-bold" onClick={() => handleDeleteCategory(cat.id)}>Delete</Button>
                                         </DialogFooter>
                                       </DialogContent>
                                     </Dialog>
@@ -397,55 +451,56 @@ const OrganizerDashboard = () => {
                       
                       {/* Check-in Type Management */}
                       <div className="space-y-4">
-                        <h3 className="font-semibold text-lg flex items-center gap-2"><Ticket className="w-5 h-5 text-primary" /> Check-in Types</h3>
+                        <h3 className="font-bold text-lg flex items-center gap-2"><Ticket className="w-5 h-5 text-primary" /> Check-in Types</h3>
                          <form onSubmit={handleCreateCheckInType} className="space-y-3">
                             <Input 
                                 value={newCheckInTypeName}
                                 onChange={(e) => setNewCheckInTypeName(e.target.value)}
                                 placeholder="New check-in type name..."
                                 required
+                                className="font-bold"
                             />
                              <Select value={selectedCheckInCategoryId} onValueChange={setSelectedCheckInCategoryId} required>
-                                <SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger>
+                                <SelectTrigger className="font-bold"><SelectValue placeholder="Select a category" /></SelectTrigger>
                                 <SelectContent>
-                                {checkInCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
+                                {checkInCategories.map(cat => <SelectItem className="font-bold" key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                            <Button type="submit" disabled={creating || !selectedCheckInCategoryId} className="w-full">
+                            <Button type="submit" disabled={creating || !selectedCheckInCategoryId} className="w-full font-bold">
                                 {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add Check-in Type'}
                             </Button>
                         </form>
                       </div>
                     </div>
                     
-                    <Separator className="my-4" />
+                    <Separator className="my-2" />
 
-                    <h3 className="font-semibold text-lg mb-2">Existing Check-in Types</h3>
-                    <ScrollArea className="border rounded-lg h-64">
+                    <h3 className="font-bold text-lg mb-2">Existing Check-in Types</h3>
+                    <ScrollArea className="border rounded-lg h-56">
                        {groupedCheckInTypes.length === 0 ? (
-                         <div className="text-center text-muted-foreground p-8">No check-in types created.</div>
+                         <div className="text-center text-muted-foreground p-8 flex items-center justify-center h-full font-bold">No check-in types created.</div>
                        ) : (
                          groupedCheckInTypes.map(category => (
                           <div key={category.id} className="p-2">
-                            <h4 className="font-semibold text-base px-2 py-1">{category.name}</h4>
+                            <h4 className="font-bold text-base px-2 py-1 text-muted-foreground">{category.name}</h4>
                              <Table>
                               <TableBody>
                                 {category.types.length === 0 ? (
-                                   <TableRow><TableCell className="text-muted-foreground text-sm italic">No types in this category.</TableCell></TableRow>
+                                   <TableRow><TableCell className="text-muted-foreground text-sm italic pl-4 font-bold">No types in this category.</TableCell></TableRow>
                                 ) : category.types.map(type => (
                                     <TableRow key={type.id}>
-                                      <TableCell>{type.name}</TableCell>
+                                      <TableCell className="font-bold">{type.name}</TableCell>
                                       <TableCell className="text-right">
                                         <Dialog>
-                                          <DialogTrigger asChild><Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"><Trash2 className="w-4 h-4" /></Button></DialogTrigger>
+                                          <DialogTrigger asChild><Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></Button></DialogTrigger>
                                           <DialogContent>
                                             <DialogHeader>
-                                              <DialogTitle>Delete Check-in Type?</DialogTitle>
+                                              <DialogTitle className="font-bold">Delete Check-in Type?</DialogTitle>
                                               <DialogDescription>Are you sure you want to delete "{type.name}"? This cannot be undone.</DialogDescription>
                                             </DialogHeader>
                                             <DialogFooter>
-                                              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                                              <Button variant="destructive" onClick={() => handleDeleteCheckInType(type.id)}>Delete</Button>
+                                              <DialogClose asChild><Button variant="outline" className="font-bold">Cancel</Button></DialogClose>
+                                              <Button variant="destructive" className="font-bold" onClick={() => handleDeleteCheckInType(type.id)}>Delete</Button>
                                             </DialogFooter>
                                           </DialogContent>
                                         </Dialog>
@@ -460,9 +515,9 @@ const OrganizerDashboard = () => {
                        )}
                     </ScrollArea>
 
-                    <DialogFooter>
+                    <DialogFooter className="pt-4">
                         <DialogClose asChild>
-                            <Button variant="outline">Close</Button>
+                            <Button variant="outline" className="font-bold">Close</Button>
                         </DialogClose>
                     </DialogFooter>
                 </DialogContent>
@@ -485,51 +540,53 @@ const OrganizerDashboard = () => {
           {!event && (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button variant="gradient" size="default" className="w-full sm:w-auto">
+                <Button variant="default" className="font-bold">
                   <Calendar className="w-4 h-4" />
                   Create Event
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">
                 <DialogHeader>
-                  <DialogTitle>Create New Event</DialogTitle>
+                  <DialogTitle className="font-bold">Create New Event</DialogTitle>
                   <DialogDescription>
                     Fill in the details below to create your event.
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleCreateEvent} className="space-y-4">
+                <form onSubmit={handleCreateEvent} className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="eventName">Event Name</Label>
+                    <Label htmlFor="eventName" className="font-bold">Event Name</Label>
                     <Input
                       id="eventName"
                       placeholder="e.g., Annual Tech Summit 2024"
                       value={newEvent.name}
                       onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
                       required
+                      className="font-bold"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="description">Description (Optional)</Label>
+                    <Label htmlFor="description" className="font-bold">Description (Optional)</Label>
                     <Input
                       id="description"
                       placeholder="A brief summary of your event"
                       value={newEvent.description}
                       onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                      className="font-bold"
                     />
                   </div>
 
                   {/* Categories */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <Label>Participant Categories</Label>
-                      <Button type="button" variant="outline" size="sm" onClick={addCategory}>
+                      <Label className="font-bold">Participant Categories</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addCategory} className="font-bold">
                         <Plus className="w-4 h-4" />
                         Add
                       </Button>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto p-1">
+                    <ScrollArea className="space-y-2 max-h-48 p-1">
                       {newEvent.categories.map((cat, index) => (
-                        <div key={cat.id} className="flex items-center gap-2">
+                        <div key={cat.id} className="flex items-center gap-2 pr-2 mb-2">
                           <div
                             className="w-4 h-4 rounded-full shrink-0"
                             style={{ backgroundColor: cat.color }}
@@ -539,6 +596,7 @@ const OrganizerDashboard = () => {
                             value={cat.name}
                             onChange={(e) => updateCategory(cat.id, e.target.value)}
                             required
+                            className="font-bold"
                           />
                           {newEvent.categories.length > 1 && (
                             <Button
@@ -546,18 +604,18 @@ const OrganizerDashboard = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => removeCategory(cat.id)}
-                              className="shrink-0 text-destructive hover:text-destructive"
+                              className="shrink-0 text-muted-foreground hover:text-destructive"
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           )}
                         </div>
                       ))}
-                    </div>
+                    </ScrollArea>
                   </div>
 
-                  <DialogFooter>
-                    <Button type="submit" variant="gradient" className="w-full" disabled={creating}>
+                  <DialogFooter className="pt-4">
+                    <Button type="submit" variant="default" className="w-full font-bold" disabled={creating}>
                       {creating ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -577,21 +635,21 @@ const OrganizerDashboard = () => {
 
       {event ? (
         <>
-          <Card className="border-0 shadow-md bg-gradient-to-r from-primary/5 to-blue-600/5">
+          <Card>
             <CardContent className="p-4 sm:flex sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="flex items-center gap-4 flex-1 min-w-0">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                   <Link2 className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-muted-foreground">Public Registration Link</p>
-                  <p className="text-sm truncate">
-                    {event.registrationLink.replace(/^(https?:\/\/)/, '')}
+                  <p className="text-sm font-bold">Public Registration Link</p>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {event.registrationLink}
                   </p>
                 </div>
               </div>
-              <Button variant="outline" onClick={copyRegistrationLink} className="shrink-0 w-full sm:w-auto mt-3 sm:mt-0">
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              <Button variant="outline" onClick={copyRegistrationLink} className="shrink-0 w-full sm:w-auto mt-3 sm:mt-0 font-bold">
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                 {copied ? 'Copied!' : 'Copy Link'}
               </Button>
             </CardContent>
@@ -599,20 +657,20 @@ const OrganizerDashboard = () => {
 
             <ScrollArea className="w-full whitespace-nowrap">
                 <div className="flex space-x-4 pb-4">
-                <Card className="border-0 shadow-md shrink-0 w-48">
+                <Card className="shrink-0 w-48">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Registered</CardTitle>
-                    <Users className="w-5 h-5 text-primary" />
+                    <CardTitle className="text-sm font-bold">Registered</CardTitle>
+                    <Users className="w-4 h-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                     <div className="text-3xl font-bold">{participants.length}</div>
                     </CardContent>
                 </Card>
                 {stats.map((stat) => (
-                    <Card key={stat.id} className="border-0 shadow-md shrink-0 w-48">
+                    <Card key={stat.id} className="shrink-0 w-48">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground truncate">{stat.name}</CardTitle>
-                        <Ticket className="w-5 h-5 text-accent" />
+                        <CardTitle className="text-sm font-bold truncate">{stat.name}</CardTitle>
+                        <Ticket className="w-4 h-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-bold">{stat.count}</div>
@@ -626,11 +684,11 @@ const OrganizerDashboard = () => {
             <ParticipantList participants={participants} event={event} checkInTypes={checkInTypes} onRefresh={fetchEventAndParticipants} />
         </>
       ) : (
-        <Card className="border-0 shadow-md">
-          <CardContent className="py-16 text-center">
+        <Card className="border-dashed">
+          <CardContent className="py-20 text-center">
             <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No Event Found</h3>
-            <p className="text-muted-foreground mb-6">You haven't created an event yet. Create one to get started.</p>
+            <h3 className="text-xl font-bold mb-2">No Event Found</h3>
+            <p className="text-muted-foreground mb-6 max-w-sm mx-auto">You haven't created an event yet. Create one to get started with registrations and check-ins.</p>
           </CardContent>
         </Card>
       )}

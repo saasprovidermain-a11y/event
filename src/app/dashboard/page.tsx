@@ -10,7 +10,7 @@ const DashboardPage = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
